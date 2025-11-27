@@ -1,0 +1,19 @@
+body {
+    padding-top: 30px;
+    background-color: #f8f9fa;
+}
+.password-toggle,
+.url-open {
+    cursor: pointer;
+    color: #0d6efd;
+    margin-left: 8px;
+}
+.entry-group {
+    padding: 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+}
+.remove-entry {
+    float: right;
+}
