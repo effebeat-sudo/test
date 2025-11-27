@@ -27,6 +27,19 @@ function roleLevel(string $role): int
     return ['user' => 1, 'admin' => 2, 'superuser' => 3][$role] ?? 0;
 }
 
+function currentUser(PDO $pdo): ?array
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    if (!isset($_SESSION['user_id'])) {
+        return null;
+    }
+    $cache = getUserById($pdo, (int)$_SESSION['user_id']);
+    return $cache;
+}
+
 function requireLogin(): void
 {
     if (!isset($_SESSION['user_id'])) {

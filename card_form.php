@@ -3,6 +3,10 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/crypto.php';
 requireLogin();
 
+$currentUser = currentUser($pdo);
+$currentUserId = (int)($_SESSION['user_id'] ?? 0);
+$currentRole = $_SESSION['role'] ?? 'user';
+
 $cardId = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $editing = $cardId !== null;
 $errors = [];
@@ -17,6 +21,14 @@ if ($editing) {
     if (!$card) {
         http_response_code(404);
         echo 'Scheda non trovata';
+        exit;
+    }
+    $allowed = $currentRole === 'superuser'
+        || ($card['admin_id'] && (int)$card['admin_id'] === $currentUserId)
+        || (int)$card['owner_id'] === $currentUserId;
+    if (!$allowed) {
+        http_response_code(403);
+        echo 'Accesso non consentito';
         exit;
     }
     $name = $card['name'];
@@ -66,8 +78,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$name, $notes, $cardId]);
             $pdo->prepare('DELETE FROM card_entries WHERE card_id = ?')->execute([$cardId]);
         } else {
-            $stmt = $pdo->prepare('INSERT INTO cards (name, notes, created_at) VALUES (?, ?, NOW())');
-            $stmt->execute([$name, $notes]);
+            $adminId = null;
+            if ($currentRole === 'admin') {
+                $adminId = $currentUserId;
+            } elseif ($currentRole === 'user') {
+                $adminId = $currentUser['created_by'] ?? null;
+            }
+
+            $stmt = $pdo->prepare('INSERT INTO cards (name, notes, owner_id, admin_id, created_at) VALUES (?, ?, ?, ?, NOW())');
+            $stmt->execute([$name, $notes, $currentUserId, $adminId]);
             $cardId = (int)$pdo->lastInsertId();
         }
 

@@ -3,6 +3,9 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/crypto.php';
 requireLogin();
 
+$currentUserId = (int)($_SESSION['user_id'] ?? 0);
+$currentRole = $_SESSION['role'] ?? 'user';
+
 $cardId = isset($_GET['id']) ? (int)$_GET['id'] : null;
 if (!$cardId) {
     http_response_code(400);
@@ -16,6 +19,15 @@ $card = $stmt->fetch();
 if (!$card) {
     http_response_code(404);
     echo 'Scheda non trovata';
+    exit;
+}
+
+$allowed = $currentRole === 'superuser'
+    || ($card['admin_id'] && (int)$card['admin_id'] === $currentUserId)
+    || (int)$card['owner_id'] === $currentUserId;
+if (!$allowed) {
+    http_response_code(403);
+    echo 'Accesso non consentito';
     exit;
 }
 

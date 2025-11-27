@@ -2,17 +2,46 @@
 require_once __DIR__ . '/includes/auth.php';
 requireLogin();
 
+$currentUserId = (int)($_SESSION['user_id'] ?? 0);
+$currentRole = $_SESSION['role'] ?? 'user';
+
 $message = null;
+$messageClass = 'success';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     $deleteId = (int)$_POST['delete_id'];
-    $stmt = $pdo->prepare('DELETE FROM card_entries WHERE card_id = ?');
+    $stmt = $pdo->prepare('SELECT id, admin_id, owner_id FROM cards WHERE id = ?');
     $stmt->execute([$deleteId]);
-    $stmt = $pdo->prepare('DELETE FROM cards WHERE id = ?');
-    $stmt->execute([$deleteId]);
-    $message = 'Scheda eliminata con successo.';
+    $card = $stmt->fetch();
+    $allowed = $card && ($currentRole === 'superuser'
+        || ($card['admin_id'] && (int)$card['admin_id'] === $currentUserId)
+        || (int)$card['owner_id'] === $currentUserId);
+
+    if ($allowed) {
+        $stmt = $pdo->prepare('DELETE FROM card_entries WHERE card_id = ?');
+        $stmt->execute([$deleteId]);
+        $stmt = $pdo->prepare('DELETE FROM cards WHERE id = ?');
+        $stmt->execute([$deleteId]);
+        $message = 'Scheda eliminata con successo.';
+        $messageClass = 'success';
+    } else {
+        $message = 'Non sei autorizzato a eliminare questa scheda.';
+        $messageClass = 'danger';
+    }
 }
 
-$stmt = $pdo->query('SELECT c.id, c.name, c.notes, COUNT(e.id) as entries FROM cards c LEFT JOIN card_entries e ON e.card_id = c.id GROUP BY c.id ORDER BY c.created_at DESC');
+$where = '';
+$params = [];
+if ($currentRole === 'admin') {
+    $where = 'WHERE (c.admin_id = ? OR c.owner_id = ?)';
+    $params[] = $currentUserId;
+    $params[] = $currentUserId;
+} elseif ($currentRole === 'user') {
+    $where = 'WHERE c.owner_id = ?';
+    $params[] = $currentUserId;
+}
+
+$stmt = $pdo->prepare("SELECT c.id, c.name, c.notes, c.admin_id, c.owner_id, COUNT(e.id) as entries, a.email AS admin_email FROM cards c LEFT JOIN card_entries e ON e.card_id = c.id LEFT JOIN users a ON a.id = c.admin_id $where GROUP BY c.id, c.admin_id, c.owner_id, a.email ORDER BY c.created_at DESC");
+$stmt->execute($params);
 $cards = $stmt->fetchAll();
 ?>
 <!doctype html>
@@ -39,7 +68,7 @@ $cards = $stmt->fetchAll();
     </div>
 
     <?php if ($message): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
+        <div class="alert alert-<?= htmlspecialchars($messageClass) ?>"><?= htmlspecialchars($message) ?></div>
     <?php endif; ?>
 
     <div class="card shadow-sm">
@@ -52,6 +81,7 @@ $cards = $stmt->fetchAll();
                         <thead>
                             <tr>
                                 <th>Nome</th>
+                                <th>Admin</th>
                                 <th>Credenziali salvate</th>
                                 <th>Note</th>
                                 <th class="text-end">Azioni</th>
@@ -61,6 +91,7 @@ $cards = $stmt->fetchAll();
                         <?php foreach ($cards as $card): ?>
                             <tr>
                                 <td><?= htmlspecialchars($card['name']) ?></td>
+                                <td><?= htmlspecialchars($card['admin_email'] ?? ($card['admin_id'] ? 'Sconosciuto' : 'Superuser')) ?></td>
                                 <td><?= (int)$card['entries'] ?></td>
                                 <td class="text-muted small"><?= nl2br(htmlspecialchars(substr($card['notes'], 0, 60))) ?></td>
                                 <td class="text-end">

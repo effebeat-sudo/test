@@ -23,8 +23,9 @@ Applicazione PHP minimale per la gestione di schede con credenziali multiple e n
 
 ## Funzionalità principali
 - Login con email/password e verifica OTP (codice inviato via email e registrato in `otp_log.txt` per test).
-- Gestione ruoli: il superuser crea admin, gli admin gestiscono gli utenti standard.
+- Gestione ruoli: il superuser crea admin, gli admin gestiscono solo i propri utenti standard.
 - CRUD delle schede con blocchi dinamici (login/password/url) e note.
+- Visibilità schede: il superuser vede tutto, ogni admin vede le proprie schede e quelle dei suoi utenti, l'utente vede solo le schede create da sé; nella lista è mostrato l'admin di riferimento.
 - Password delle schede cifrate con AES-256-CBC tramite la chiave definita in `config.php`.
 - Pulsante occhio per mostrare/nascondere password e icona link per aprire la URL in nuova scheda.
 - Logout disponibile da tutte le pagine protette.

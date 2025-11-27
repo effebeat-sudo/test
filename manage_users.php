@@ -2,6 +2,9 @@
 require_once __DIR__ . '/includes/auth.php';
 requireRole('admin');
 
+$currentUserId = (int)($_SESSION['user_id'] ?? 0);
+$currentRole = $_SESSION['role'] ?? 'user';
+
 $errors = [];
 $success = null;
 
@@ -27,8 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->fetch()) {
                 $errors[] = 'Email già registrata.';
             } else {
-                $stmt = $pdo->prepare('INSERT INTO users (email, password_hash, role, created_at) VALUES (?, ?, ?, NOW())');
-                $stmt->execute([$email, password_hash($password, PASSWORD_DEFAULT), $role]);
+                $stmt = $pdo->prepare('INSERT INTO users (email, password_hash, role, created_by, created_at) VALUES (?, ?, ?, ?, NOW())');
+                $stmt->execute([$email, password_hash($password, PASSWORD_DEFAULT), $role, $currentUserId]);
                 $success = 'Utente creato con successo.';
             }
         }
@@ -38,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($target) {
             if ($target['role'] === 'superuser') {
                 $errors[] = 'Non puoi eliminare il superuser.';
-            } elseif ($_SESSION['role'] === 'admin' && $target['role'] !== 'user') {
-                $errors[] = 'Gli admin possono eliminare solo utenti standard.';
+            } elseif ($currentRole === 'admin' && ($target['role'] !== 'user' || (int)$target['created_by'] !== $currentUserId)) {
+                $errors[] = 'Gli admin possono eliminare solo i propri utenti standard.';
             } elseif ($deleteId === (int)$_SESSION['user_id']) {
                 $errors[] = 'Non puoi eliminare te stesso.';
             } else {
@@ -50,8 +53,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$stmt = $pdo->query('SELECT id, email, role, created_at FROM users ORDER BY created_at DESC');
+if ($currentRole === 'superuser') {
+    $stmt = $pdo->prepare('SELECT id, email, role, created_at, created_by FROM users ORDER BY created_at DESC');
+    $stmt->execute();
+} else {
+    $stmt = $pdo->prepare('SELECT id, email, role, created_at, created_by FROM users WHERE id = ? OR created_by = ? ORDER BY created_at DESC');
+    $stmt->execute([$currentUserId, $currentUserId]);
+}
 $users = $stmt->fetchAll();
+
+$creators = [];
+if ($users) {
+    $creatorIds = array_unique(array_filter(array_column($users, 'created_by')));
+    if ($creatorIds) {
+        $in = implode(',', array_fill(0, count($creatorIds), '?'));
+        $stmt = $pdo->prepare("SELECT id, email FROM users WHERE id IN ($in)");
+        $stmt->execute($creatorIds);
+        foreach ($stmt->fetchAll() as $row) {
+            $creators[$row['id']] = $row['email'];
+        }
+    }
+}
 ?>
 <!doctype html>
 <html lang="it">
@@ -122,6 +144,7 @@ $users = $stmt->fetchAll();
                         <tr>
                             <th>Email</th>
                             <th>Ruolo</th>
+                            <th>Creato da</th>
                             <th>Creato il</th>
                             <th class="text-end">Azioni</th>
                         </tr>
@@ -131,6 +154,7 @@ $users = $stmt->fetchAll();
                         <tr>
                             <td><?= htmlspecialchars($user['email']) ?></td>
                             <td><?= htmlspecialchars($user['role']) ?></td>
+                            <td><?= htmlspecialchars($creators[$user['created_by']] ?? ($user['created_by'] ? 'Sconosciuto' : '-')) ?></td>
                             <td><?= htmlspecialchars($user['created_at']) ?></td>
                             <td class="text-end">
                                 <?php if ($user['id'] !== (int)$_SESSION['user_id']): ?>
